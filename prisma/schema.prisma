@@ -1,0 +1,891 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  passwordHash    String
+  isEmailVerified Boolean   @default(false)
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  patients        Patient[]
+  users           User[]
+}
+
+model User {
+  id                     String                      @id @default(uuid())
+  name                   String
+  email                  String
+  passwordHash           String?
+  role                   String
+  createdAt              DateTime                    @default(now())
+  updatedAt              DateTime                    @updatedAt
+  consultationType       String                      @default("Mixed")
+  schedule               Json?
+  specialties            String[]
+  googleClientId         String?
+  googleClientSecret     String?
+  googleRefreshToken     String?
+  videoProvider          String                      @default("daily")
+  zoomAccountId          String?
+  zoomClientId           String?
+  zoomClientSecret       String?
+  breakTime              Int                         @default(0)
+  customSenderName       String?
+  metaAccessToken        String?
+  metaBusinessId         String?
+  metaTokenIv            String?
+  personalSmsNumber      String?
+  smsNumberVerified      Boolean                     @default(false)
+  smsTier                SmsTier                     @default(SYSTEM_DEFAULT)
+  whatsappPhoneNumber    String?
+  whatsappQrExpiry       DateTime?
+  whatsappQrSession      String?
+  whatsappTier           WhatsAppTier                @default(SYSTEM_FALLBACK)
+  timezone               String?
+  accountId              String?
+  clinicId               String?
+  image                  String?
+  isPermissionOverridden Boolean                     @default(false)
+  permissions            Json?
+  status                 String                      @default("ACTIVE")
+  verificationToken      String?
+  automaticWaitlist      Boolean                     @default(false)
+  allergies              Allergy[]
+  appointments           Appointment[]
+  providerUpdates        ClinicMeetingProvider[]     @relation("ProviderUpdates")
+  memberships            ClinicMember[]
+  encounters             ClinicalEncounter[]
+  conversations          Conversation[]              @relation("DoctorConversations")
+  diagnoses              Diagnosis[]
+  communicationProfile   DoctorCommunicationProfile?
+  smsConfig              DoctorSmsConfig?
+  smtpConfig             DoctorSmtpConfig?
+  medications            Medication[]
+  createdMeetings        Meeting[]                   @relation("CreatedMeetings")
+  meetingParticipations  MeetingParticipant[]        @relation("MeetingParticipations")
+  onBehalfMessages       Message[]                   @relation("OnBehalfOfMessages")
+  sentMessages           Message[]                   @relation("SenderToMessages")
+  assignedPatients       Patient[]                   @relation("AssignedDoctorToPatients")
+  patientNotes           PatientNote[]
+  recordedObservations   PatientObservation[]        @relation("RecordedObservations")
+  services               Service[]
+  account                Account?                    @relation(fields: [accountId], references: [id])
+  clinic                 Clinic?                     @relation("ClinicToUsers", fields: [clinicId], references: [id])
+  vitals                 Vitals[]
+}
+
+model DoctorCommunicationProfile {
+  id                   String   @id @default(uuid())
+  userId               String   @unique
+  postmarkSignatureId  String?
+  isEmailVerified      Boolean  @default(false)
+  verifiedEmail        String?
+  confirmedByPostmark  Boolean  @default(false)
+  smsAlphanumericId    String?
+  whatsappWabaId       String?
+  whatsappSenderNumber String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  user                 User     @relation(fields: [userId], references: [id])
+}
+
+model DoctorSmtpConfig {
+  id                String   @id @default(uuid())
+  userId            String   @unique
+  host              String
+  port              Int      @default(587)
+  user              String
+  passwordEncrypted String
+  iv                String
+  senderName        String?
+  secure            Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  userJoin          User     @relation(fields: [userId], references: [id])
+}
+
+model DoctorSmsConfig {
+  id                 String   @id @default(uuid())
+  userId             String   @unique
+  accountSid         String
+  authTokenEncrypted String
+  iv                 String
+  phoneNumber        String
+  whatsappNumber     String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  userJoin           User     @relation(fields: [userId], references: [id])
+}
+
+model Patient {
+  id                    String               @id @default(uuid())
+  name                  String
+  email                 String?
+  phone                 String?
+  dob                   DateTime?
+  gender                String?
+  address               String?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  chatChannelSid        String?
+  completedAppts        Int                  @default(0)
+  lateCancellations     Int                  @default(0)
+  noShowScore           Float                @default(0.0)
+  totalMissed           Int                  @default(0)
+  passwordHash          String?
+  accountId             String?
+  assignedDoctorId      String?
+  clinicId              String?
+  age                   Int?
+  tags                  String[]             @default([])
+  bloodGroup            String?
+  allergies             Allergy[]
+  appointments          Appointment[]
+  encounters            ClinicalEncounter[]
+  conversations         Conversation[]
+  diagnoses             Diagnosis[]
+  formSubmissions       FormSubmission[]
+  intakeSessions        IntakeSession[]
+  medications           Medication[]
+  meetingParticipations MeetingParticipant[]
+  account               Account?             @relation(fields: [accountId], references: [id])
+  assignedDoctor        User?                @relation("AssignedDoctorToPatients", fields: [assignedDoctorId], references: [id])
+  clinic                Clinic?              @relation(fields: [clinicId], references: [id])
+  files                 PatientFile[]
+  notes                 PatientNote[]
+  observations          PatientObservation[]
+  recallOpportunities   RecallOpportunity[]
+  vitals                Vitals[]
+  waitlistOffers        WaitlistOffer[]
+  workflowInstances     WorkflowInstance[]
+}
+
+model Clinic {
+  id              String                   @id @default(uuid())
+  name            String
+  address         String
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+  phone           String?
+  timezone        String                   @default("UTC")
+  description     String?
+  email           String?
+  latitude        Float?
+  logo            String?
+  longitude       Float?
+  website         String?
+  mapLink         String?
+  mapPin          String?
+  allergies       Allergy[]
+  appointments    Appointment[]
+  meetingProvider ClinicMeetingProvider?
+  members         ClinicMember[]
+  encounters      ClinicalEncounter[]
+  diagnoses       Diagnosis[]
+  emailTemplates  EmailTemplate[]
+  forms           Form[]
+  medications     Medication[]
+  meetings        Meeting[]
+  patients        Patient[]
+  observations    PatientObservation[]
+  roleTemplates   RolePermissionTemplate[]
+  services        Service[]
+  users           User[]                   @relation("ClinicToUsers")
+  vitals          Vitals[]
+  workflows       WorkflowDefinition[]
+}
+
+model RolePermissionTemplate {
+  id          String   @id @default(uuid())
+  clinicId    String
+  role        String
+  permissions Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  clinic      Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@unique([clinicId, role])
+}
+
+model ClinicMember {
+  id                     String   @id @default(uuid())
+  userId                 String
+  clinicId               String
+  role                   String
+  permissions            Json?
+  isPermissionOverridden Boolean  @default(false)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  clinic                 Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clinicId])
+}
+
+model Service {
+  id           String        @id @default(uuid())
+  name         String
+  description  String?
+  duration     String
+  price        Float?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  type         String        @default("In-person")
+  clinicId     String?
+  doctorId     String?
+  appointments Appointment[]
+  clinic       Clinic?       @relation(fields: [clinicId], references: [id])
+  doctor       User?         @relation(fields: [doctorId], references: [id])
+}
+
+model Appointment {
+  id                String             @id @default(uuid())
+  patientId         String?
+  doctorId          String
+  status            String             @default("scheduled")
+  notes             String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  clinicId          String?
+  date              DateTime
+  guestEmail        String?
+  guestName         String?
+  guestPhone        String?
+  serviceId         String?
+  type              String             @default("in-person")
+  priority          Int?
+  waitlistAddedAt   DateTime?
+  waitlistReason    String?
+  confirmationToken String?            @unique
+  isConfirmed       Boolean            @default(false)
+  reminderSent      Boolean            @default(false)
+  recurringFreq     String?            @default("NONE")
+  recurringGroupId  String?
+  recurringUntil    DateTime?
+  clinic            Clinic?            @relation(fields: [clinicId], references: [id])
+  doctor            User               @relation(fields: [doctorId], references: [id])
+  patient           Patient?           @relation(fields: [patientId], references: [id])
+  service           Service?           @relation(fields: [serviceId], references: [id])
+  logs              AppointmentLog[]
+  clinicalEncounter ClinicalEncounter?
+  communicationLogs CommunicationLog[]
+  emailTokens       EmailToken[]
+  formSubmissions   FormSubmission[]
+  intakeSession     IntakeSession?
+  meeting           Meeting?
+  waitlistOffers    WaitlistOffer[]
+  workflowInstances WorkflowInstance[]
+
+  @@index([clinicId, date])
+}
+
+model AppointmentLog {
+  id            String      @id @default(uuid())
+  appointmentId String
+  action        String
+  metadata      Json?
+  timestamp     DateTime    @default(now())
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+}
+
+model WorkflowInstance {
+  id            String                 @id @default(uuid())
+  workflowId    String
+  patientId     String?
+  appointmentId String?
+  currentNodeId String?
+  status        String                 @default("RUNNING")
+  contextData   Json
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+  nextRunAt     DateTime?
+  logs          WorkflowExecutionLog[]
+  appointment   Appointment?           @relation(fields: [appointmentId], references: [id])
+  patient       Patient?               @relation(fields: [patientId], references: [id])
+  workflow      WorkflowDefinition     @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+}
+
+model WorkflowExecutionLog {
+  id         String           @id @default(uuid())
+  instanceId String
+  stepId     String?
+  status     String
+  message    String?
+  timestamp  DateTime         @default(now())
+  instance   WorkflowInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+}
+
+model EmailTemplate {
+  id            String         @id @default(uuid())
+  name          String
+  category      String
+  subject       String
+  bodyHasHtml   Boolean        @default(false)
+  bodyHtml      String?
+  bodyText      String
+  variables     String[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  clinicId      String?
+  isSystem      Boolean        @default(false)
+  clinic        Clinic?        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  workflowSteps WorkflowStep[]
+
+  @@unique([category, clinicId])
+}
+
+model WorkflowDefinition {
+  id          String             @id @default(uuid())
+  name        String
+  description String?
+  triggerType String
+  patientType String             @default("ALL")
+  isActive    Boolean            @default(false)
+  nodes       Json?
+  edges       Json?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  clinicId    String?
+  formId      String?
+  uiData      Json?
+  logs        CommunicationLog[]
+  clinic      Clinic?            @relation(fields: [clinicId], references: [id])
+  instances   WorkflowInstance[]
+  steps       WorkflowStep[]
+}
+
+model WorkflowStep {
+  id           String             @id @default(uuid())
+  workflowId   String
+  order        Int
+  type         String
+  delayMinutes Int?
+  channel      String?
+  templateId   String?
+  template     EmailTemplate?     @relation(fields: [templateId], references: [id])
+  workflow     WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+}
+
+model Form {
+  id               String           @id @default(uuid())
+  title            String
+  description      String?
+  status           String           @default("draft")
+  config           Json
+  submissions      Int              @default(0)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  isDefault        Boolean          @default(false)
+  systemType       String?          @unique
+  clinicId         String?
+  isActive         Boolean          @default(true)
+  type             String           @default("CUSTOM")
+  clinic           Clinic?          @relation(fields: [clinicId], references: [id])
+  submissionParams FormSubmission[]
+}
+
+model FormSubmission {
+  id            String       @id @default(uuid())
+  formId        String
+  data          Json
+  createdAt     DateTime     @default(now())
+  appointmentId String?
+  patientId     String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  form          Form         @relation(fields: [formId], references: [id], onDelete: Cascade)
+  patient       Patient?     @relation(fields: [patientId], references: [id])
+}
+
+model PatientFile {
+  id        String   @id @default(uuid())
+  patientId String
+  name      String
+  url       String
+  type      String
+  size      Int
+  createdAt DateTime @default(now())
+  patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+}
+
+model Conversation {
+  id            String             @id @default(uuid())
+  doctorId      String?
+  patientId     String?
+  lastMessageAt DateTime?          @default(now())
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  clinicId      String?
+  status        ConversationStatus @default(OPEN)
+  type          ConversationType   @default(INTERNAL)
+  visitorId     String?
+  doctor        User?              @relation("DoctorConversations", fields: [doctorId], references: [id], onDelete: Cascade)
+  patient       Patient?           @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  visitor       Visitor?           @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  messages      Message[]
+
+  @@index([doctorId])
+  @@index([patientId])
+  @@index([visitorId])
+  @@index([clinicId])
+}
+
+model Message {
+  id             String           @id @default(uuid())
+  senderId       String?
+  senderType     String
+  createdAt      DateTime         @default(now())
+  conversationId String
+  content        String
+  channel        Channel          @default(IN_APP)
+  direction      MessageDirection @default(OUTBOUND)
+  externalId     String?          @unique
+  metadata       Json?
+  onBehalfOfId   String?
+  readAt         DateTime?
+  status         MessageStatus    @default(SENT)
+  visitorId      String?
+  conversation   Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  onBehalfOf     User?            @relation("OnBehalfOfMessages", fields: [onBehalfOfId], references: [id])
+  sender         User?            @relation("SenderToMessages", fields: [senderId], references: [id], map: "Message_senderId_fkey")
+  visitor        Visitor?         @relation(fields: [visitorId], references: [id])
+
+  @@index([conversationId])
+  @@index([createdAt])
+  @@index([senderId])
+  @@index([onBehalfOfId])
+}
+
+model EmailVerification {
+  id        String   @id @default(uuid())
+  email     String
+  code      String
+  userData  Json
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@index([code])
+}
+
+model CommunicationLog {
+  id            String              @id @default(uuid())
+  patientId     String
+  workflowId    String?
+  type          String
+  status        String
+  direction     String
+  content       String
+  sentAt        DateTime            @default(now())
+  providerId    String?
+  appointmentId String?
+  fromIdentity  String?
+  tierUsed      String?
+  metadata      Json?
+  appointment   Appointment?        @relation(fields: [appointmentId], references: [id])
+  workflow      WorkflowDefinition? @relation(fields: [workflowId], references: [id])
+}
+
+model EmailToken {
+  id            String      @id @default(uuid())
+  token         String      @unique
+  appointmentId String
+  action        String
+  expiresAt     DateTime
+  usedAt        DateTime?
+  createdAt     DateTime    @default(now())
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([appointmentId])
+}
+
+model SystemLog {
+  id        String   @id @default(uuid())
+  action    String
+  module    String
+  userId    String?
+  clinicId  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([module])
+  @@index([clinicId])
+}
+
+model ClinicMeetingProvider {
+  id                 String   @id @default(uuid())
+  clinicId           String   @unique
+  enabledProviders   String[]
+  googleClientId     String?
+  googleClientSecret String?
+  googleRefreshToken String?
+  googleEncryptionIv String?
+  zoomAccountId      String?
+  zoomClientId       String?
+  zoomClientSecret   String?
+  zoomEncryptionIv   String?
+  defaultProvider    String   @default("INTERNAL")
+  updatedBy          String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  clinic             Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  updatedByUser      User     @relation("ProviderUpdates", fields: [updatedBy], references: [id])
+}
+
+model Meeting {
+  id                String               @id @default(uuid())
+  title             String
+  description       String?
+  clinicId          String
+  createdBy         String
+  createdByRole     String
+  meetingType       MeetingType
+  startTime         DateTime
+  endTime           DateTime?
+  timezone          String               @default("UTC")
+  provider          MeetingProvider
+  meetingLink       String
+  providerMeetingId String?
+  status            MeetingStatus        @default(SCHEDULED)
+  appointmentId     String?              @unique
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  appointment       Appointment?         @relation(fields: [appointmentId], references: [id])
+  clinic            Clinic               @relation(fields: [clinicId], references: [id])
+  creator           User                 @relation("CreatedMeetings", fields: [createdBy], references: [id])
+  auditLogs         MeetingAuditLog[]
+  participants      MeetingParticipant[]
+
+  @@index([clinicId])
+  @@index([createdBy])
+  @@index([startTime])
+  @@index([status])
+}
+
+model MeetingParticipant {
+  id        String            @id @default(uuid())
+  meetingId String
+  userId    String?
+  patientId String?
+  role      ParticipantRole
+  status    ParticipantStatus @default(INVITED)
+  joinedAt  DateTime?
+  leftAt    DateTime?
+  createdAt DateTime          @default(now())
+  meeting   Meeting           @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  patient   Patient?          @relation(fields: [patientId], references: [id])
+  user      User?             @relation("MeetingParticipations", fields: [userId], references: [id])
+
+  @@unique([meetingId, userId])
+  @@unique([meetingId, patientId])
+  @@index([meetingId])
+}
+
+model MeetingAuditLog {
+  id        String   @id @default(uuid())
+  meetingId String
+  action    String
+  userId    String?
+  patientId String?
+  metadata  Json?
+  timestamp DateTime @default(now())
+  meeting   Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId])
+  @@index([timestamp])
+}
+
+model Visitor {
+  id          String         @id @default(uuid())
+  token       String         @unique
+  clinicId    String
+  email       String?
+  name        String?
+  phone       String?
+  fingerprint String?
+  metadata    Json?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  chats       Conversation[]
+  messages    Message[]
+
+  @@index([clinicId])
+  @@index([token])
+  @@index([email])
+}
+
+model WaitlistOffer {
+  id            String      @id @default(uuid())
+  appointmentId String
+  patientId     String
+  token         String      @unique
+  status        String      @default("PENDING")
+  expiresAt     DateTime
+  createdAt     DateTime    @default(now())
+  appointment   Appointment @relation(fields: [appointmentId], references: [id])
+  patient       Patient     @relation(fields: [patientId], references: [id])
+
+  @@index([token])
+  @@index([appointmentId])
+  @@index([patientId])
+}
+
+model PatientNote {
+  id        String   @id @default(uuid())
+  patientId String
+  doctorId  String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  doctor    User     @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+}
+
+model IntakeSession {
+  id            String       @id @default(uuid())
+  appointmentId String?      @unique
+  token         String       @unique
+  status        String       @default("OPEN")
+  messages      Json?
+  summary       String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  expiresAt     DateTime?
+  patientId     String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  patient       Patient?     @relation(fields: [patientId], references: [id])
+}
+
+model RecallOpportunity {
+  id            String    @id @default(uuid())
+  patientId     String
+  reason        String
+  status        String    @default("PENDING")
+  draftMessage  String?
+  lastContacted DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  patient       Patient   @relation(fields: [patientId], references: [id])
+
+  @@index([patientId])
+  @@index([status])
+}
+
+model Vitals {
+  id              String             @id @default(uuid())
+  patientId       String
+  clinicId        String
+  doctorId        String
+  encounterId     String?
+  height          Float?
+  weight          Float?
+  bmi             Float?
+  bpSystolic      Int?
+  bpDiastolic     Int?
+  temperature     Float?
+  heartRate       Int?
+  respiratoryRate Int?
+  spO2            Int?
+  recordedAt      DateTime           @default(now())
+  clinic          Clinic             @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  doctor          User               @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  encounter       ClinicalEncounter? @relation(fields: [encounterId], references: [id])
+  patient         Patient            @relation(fields: [patientId], references: [id], onDelete: Cascade)
+}
+
+model Diagnosis {
+  id          String             @id @default(uuid())
+  patientId   String
+  clinicId    String
+  doctorId    String
+  encounterId String?
+  code        String
+  description String
+  status      String
+  recordedAt  DateTime           @default(now())
+  clinic      Clinic             @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  doctor      User               @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  encounter   ClinicalEncounter? @relation(fields: [encounterId], references: [id])
+  patient     Patient            @relation(fields: [patientId], references: [id], onDelete: Cascade)
+}
+
+model Medication {
+  id          String             @id @default(uuid())
+  patientId   String
+  clinicId    String
+  doctorId    String
+  encounterId String?
+  name        String
+  dosage      String?
+  frequency   String?
+  startDate   DateTime?
+  endDate     DateTime?
+  status      String
+  recordedAt  DateTime           @default(now())
+  clinic      Clinic             @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  doctor      User               @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  encounter   ClinicalEncounter? @relation(fields: [encounterId], references: [id])
+  patient     Patient            @relation(fields: [patientId], references: [id], onDelete: Cascade)
+}
+
+model Allergy {
+  id          String             @id @default(uuid())
+  patientId   String
+  clinicId    String
+  doctorId    String
+  encounterId String?
+  substance   String
+  reaction    String?
+  severity    String?
+  recordedAt  DateTime           @default(now())
+  clinic      Clinic             @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  doctor      User               @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  encounter   ClinicalEncounter? @relation(fields: [encounterId], references: [id])
+  patient     Patient            @relation(fields: [patientId], references: [id], onDelete: Cascade)
+}
+
+model ClinicalEncounter {
+  id            String               @id @default(uuid())
+  patientId     String
+  clinicId      String
+  doctorId      String
+  appointmentId String?              @unique
+  recordedAt    DateTime             @default(now())
+  finalizedAt   DateTime?
+  type          String               @default("General")
+  status        String               @default("DRAFT")
+  subjective    String?
+  objective     String?
+  assessment    String?
+  plan          String?
+  transcript    String?
+  audioUrl      String?
+  isAudioSaved  Boolean              @default(false)
+  allergies     Allergy[]
+  appointment   Appointment?         @relation(fields: [appointmentId], references: [id])
+  clinic        Clinic               @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  doctor        User                 @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  patient       Patient              @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  diagnoses     Diagnosis[]
+  medications   Medication[]
+  observations  PatientObservation[]
+  vitals        Vitals[]
+
+  @@index([clinicId, recordedAt])
+}
+
+model PatientObservation {
+  id               String              @id @default(uuid())
+  patientId        String
+  encounterId      String?
+  clinicId         String
+  recordedByUserId String
+  type             String
+  value            String?
+  unit             String?
+  systolic         Int?
+  diastolic        Int?
+  position         String?
+  method           String?
+  notes            String?
+  status           String              @default("FINAL")
+  recordedAt       DateTime            @default(now())
+  amendedFromId    String?             @unique
+  amendedFrom      PatientObservation? @relation("ObservationAmendments", fields: [amendedFromId], references: [id])
+  amendment        PatientObservation? @relation("ObservationAmendments")
+  clinic           Clinic              @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  encounter        ClinicalEncounter?  @relation(fields: [encounterId], references: [id])
+  patient          Patient             @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  recordedByUser   User                @relation("RecordedObservations", fields: [recordedByUserId], references: [id])
+
+  @@index([patientId, type, recordedAt])
+  @@index([encounterId])
+  @@index([clinicId, recordedAt])
+  @@index([clinicId])
+}
+
+enum SmsTier {
+  PERSONAL_NUMBER
+  CUSTOM_BRANDING
+  SYSTEM_DEFAULT
+}
+
+enum WhatsAppTier {
+  META_OFFICIAL
+  QR_CODE
+  SYSTEM_FALLBACK
+}
+
+enum Channel {
+  IN_APP
+  SMS
+  WHATSAPP
+  EMAIL
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  UNDELIVERED
+}
+
+enum MeetingType {
+  INSTANT
+  SCHEDULED
+  APPOINTMENT_LINKED
+  STANDALONE
+}
+
+enum MeetingProvider {
+  INTERNAL
+  GOOGLE_MEET
+  ZOOM
+}
+
+enum MeetingStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum ParticipantRole {
+  HOST
+  ATTENDEE
+}
+
+enum ParticipantStatus {
+  INVITED
+  JOINED
+  LEFT
+  DECLINED
+}
+
+enum ConversationType {
+  INTERNAL
+  VISITOR
+  SUPPORT
+}
+
+enum ConversationStatus {
+  OPEN
+  ASSIGNED
+  CLOSED
+  ARCHIVED
+}

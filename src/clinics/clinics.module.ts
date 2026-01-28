@@ -1,0 +1,12 @@
+import { Module } from '@nestjs/common';
+import { ClinicsService } from './clinics.service';
+import { ClinicsController } from './clinics.controller';
+import { PrismaModule } from '../prisma/prisma.module';
+import { EmailTemplatesModule } from '../email-templates/email-templates.module';
+
+@Module({
+  imports: [PrismaModule, EmailTemplatesModule],
+  controllers: [ClinicsController],
+  providers: [ClinicsService]
+})
+export class ClinicsModule { }

@@ -1,0 +1,22 @@
+
+export enum UserRole {
+    SYSTEM_ADMIN = 'SYSTEM_ADMIN',
+    SAAS_OWNER = 'SAAS_OWNER',
+    CLINIC_ADMIN = 'CLINIC_ADMIN',
+    DOCTOR = 'DOCTOR',
+    NURSE = 'NURSE',
+    STAFF = 'STAFF',
+    PATIENT = 'PATIENT',
+    VISITOR = 'VISITOR'
+}
+
+export const ROLES = {
+    SYSTEM_ADMIN: 'SYSTEM_ADMIN',
+    SAAS_OWNER: 'SAAS_OWNER',
+    CLINIC_ADMIN: 'CLINIC_ADMIN',
+    DOCTOR: 'DOCTOR',
+    NURSE: 'NURSE',
+    STAFF: 'STAFF',
+    PATIENT: 'PATIENT',
+    VISITOR: 'VISITOR'
+} as const;
