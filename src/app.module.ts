@@ -39,7 +39,6 @@ import { PatientAuthModule } from './auth/patient-auth.module';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 import { BillingModule } from './billing/billing.module';
-import { EmailActionsController } from './controllers/email-actions.controller';
 import { ChatWidgetModule } from './chat-widget/chat-widget.module';
 import { CommonModule } from './common/common.module';
 
