@@ -774,17 +774,19 @@ export class AuthService {
         const { email, name, password, role, timezone } = data;
 
         // Check if user already exists
-        const existingUser = await this.prisma.user.findFirst({
-            where: {
-                email: {
-                    equals: email,
-                    mode: 'insensitive'
-                }
-            }
-        });
+        const [existingUser, existingAccount] = await Promise.all([
+            this.prisma.user.findFirst({
+                where: { email: { equals: email, mode: 'insensitive' } }
+            }),
+            this.prisma.account.findUnique({
+                where: { email: email.toLowerCase() }
+            })
+        ]);
 
-        if (existingUser) {
-            throw new ConflictException(`An account with this email already exists as a ${existingUser.role}. Please log in instead.`);
+        if (existingUser || existingAccount) {
+            const rawRole = existingUser?.role || 'user';
+            const humanRole = rawRole.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+            throw new ConflictException(`An account with this email already exists as a ${humanRole}. Please log in instead.`);
         }
 
         // Rate limiting: Check if too many requests from this email
