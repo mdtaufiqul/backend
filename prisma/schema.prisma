@@ -227,7 +227,7 @@ model ClinicMember {
   clinic                 Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, clinicId])
+  @@unique([userId, clinicId, role])
 }
 
 model Service {

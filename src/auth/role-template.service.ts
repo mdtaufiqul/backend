@@ -15,8 +15,8 @@ export class RoleTemplateService {
         'CLINIC_ADMIN': {
             'view_clinic_info': true,
             'manage_clinic_info': true,
-            'view_doctors': true,
-            'manage_doctors': true,
+            'view_staff': true,
+            'manage_staff': true,
             'view_patients': true,
             'manage_patients': true,
             'view_appointments': true,
@@ -29,7 +29,7 @@ export class RoleTemplateService {
         },
         'DOCTOR': {
             'view_clinic_info': true,
-            'view_doctors': true,
+            'view_staff': true,
             'view_schedule': true, // Added to allow sidebar access
             'view_own_schedule': true,
             'manage_own_schedule': true,
@@ -42,7 +42,7 @@ export class RoleTemplateService {
         },
         'STAFF': {
             'view_clinic_info': true,
-            'view_doctors': true,
+            'view_staff': true,
             'view_patients': true,
             'view_appointments': true,
             'manage_appointments': true,
@@ -50,26 +50,27 @@ export class RoleTemplateService {
         },
         'MANAGER': {
             'view_clinic_info': true,
-            'view_doctors': true,
+            'view_staff': true,
             'view_patients': true,
             'view_appointments': true,
             'view_workflows': true
         },
         'RECEPTIONIST': {
             'view_clinic_info': true,
-            'view_doctors': true,
+            'view_staff': true,
             'view_patients': true,
             'view_appointments': true,
             'manage_appointments': true
         },
         'NURSE': {
             'view_clinic_info': true,
-            'view_doctors': true,
+            'view_staff': true,
             'view_patients': true,
             'manage_patients': true
         },
         'REPRESENTATIVE': {
             'view_clinic_info': true,
+            'view_staff': true,
             'view_patients': true,
             'chat_with_patients': true
         }

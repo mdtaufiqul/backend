@@ -31,6 +31,7 @@ export class UsersService {
 
     // Determine permissions
     let permissions = userData.permissions;
+    const isOverride = userData.isPermissionOverridden ?? (!!permissions);
 
     // If no explicit permissions provided, fetch from template
     if (!permissions && userData.clinicId) {
@@ -39,9 +40,42 @@ export class UsersService {
       permissions = await this.roleTemplateService.getTemplate('default', userData.role);
     }
 
+    // Check if user already exists in the system (by email)
+    const existingUser = await this.prisma.user.findFirst({
+      where: { email: userData.email.toLowerCase() },
+      include: { memberships: true }
+    });
+
+    if (existingUser) {
+      // User exists. Check if they already have this role in this clinic.
+      const hasRoleInClinic = (existingUser.role === userData.role && existingUser.clinicId === userData.clinicId) ||
+        existingUser.memberships.some(m => m.clinicId === userData.clinicId && m.role === userData.role);
+
+      if (hasRoleInClinic) {
+        throw new Error('User already exists in this clinic with this role.');
+      }
+
+      // Add a new membership for the existing user
+      const newMembership = await this.prisma.clinicMember.create({
+        data: {
+          userId: existingUser.id,
+          clinicId: userData.clinicId,
+          role: userData.role,
+          permissions: permissions || {},
+          isPermissionOverridden: isOverride,
+        }
+      });
+
+      this.logger.log(`Added membership for existing user ${userData.email} with role ${userData.role} in clinic ${userData.clinicId}`);
+
+      // Optionally update the existing user's name if it was missing or different? 
+      // For now, let's keep it simple and just return the user with their new membership.
+      return { ...existingUser, newMembership };
+    }
+
     // Prepare data for user creation, excluding clinicId, permissions, and creatorId
     // Also exclude timezone if not explicitly provided (let it be null for clinic fallback)
-    const { clinicId, permissions: _perms, creatorId, ...restUserData } = userData;
+    const { clinicId, permissions: _perms, creatorId, isPermissionOverridden: __, ...restUserData } = userData;
 
     // Generate random verification token
     const verificationToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -52,8 +86,10 @@ export class UsersService {
     const newUser = await this.prisma.user.create({
       data: {
         ...restUserData,
+        email: userData.email.toLowerCase(),
         passwordHash,
-        permissions,
+        permissions: permissions || {},
+        isPermissionOverridden: isOverride,
         verificationToken,
         status, // Set status
         timezone: (userData as any).timezone || null, // Ensure explicit null if undefined, to trigger fallback
@@ -61,10 +97,6 @@ export class UsersService {
       } as any,
     });
 
-    // If explicit permissions passed, update template
-    if (clinicId && permissions && Object.keys(permissions).length > 0) {
-      await this.roleTemplateService.updateTemplate(clinicId, userData.role, permissions);
-    }
 
     try {
       // Send Verification Email
@@ -235,22 +267,27 @@ export class UsersService {
     if (updateUserDto.clinicId && updateUserDto.role) {
       const membership = await this.prisma.clinicMember.upsert({
         where: {
-          userId_clinicId: {
+          userId_clinicId_role: {
             userId: id,
-            clinicId: updateUserDto.clinicId
+            clinicId: updateUserDto.clinicId,
+            role: updateUserDto.role
           }
         },
         update: {
           role: updateUserDto.role,
           permissions: updateUserDto.permissions || undefined,
-          isPermissionOverridden: !!updateUserDto.permissions
+          isPermissionOverridden: updateUserDto.isPermissionOverridden !== undefined
+            ? updateUserDto.isPermissionOverridden
+            : !!updateUserDto.permissions
         },
         create: {
           userId: id,
           clinicId: updateUserDto.clinicId,
           role: updateUserDto.role,
           permissions: updateUserDto.permissions || undefined,
-          isPermissionOverridden: !!updateUserDto.permissions
+          isPermissionOverridden: updateUserDto.isPermissionOverridden !== undefined
+            ? updateUserDto.isPermissionOverridden
+            : !!updateUserDto.permissions
         }
       });
 
@@ -314,7 +351,9 @@ export class UsersService {
     }
 
     // If updating main user object directly (legacy or single profile update)
-    if (updateUserDto.permissions) {
+    if (updateUserDto.isPermissionOverridden !== undefined) {
+      dataToUpdate.isPermissionOverridden = updateUserDto.isPermissionOverridden;
+    } else if (updateUserDto.permissions) {
       dataToUpdate.isPermissionOverridden = true;
     }
 

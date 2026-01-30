@@ -31,4 +31,7 @@ export class CreateUserDto {
     @IsOptional()
     @IsString()
     personalSmsNumber?: string;
+
+    @IsOptional()
+    isPermissionOverridden?: boolean;
 }
