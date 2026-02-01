@@ -438,7 +438,8 @@ export class AppointmentsService {
       try {
         // Ensure meeting exists (idempotent)
         const { url } = await this.getMeetingUrl(result.id);
-        meetingLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/meet/${result.id}`;
+        // Use direct provider URL (Google Meet / Zoom / Daily) instead of internal wrapper
+        meetingLink = url;
       } catch (e) {
         console.error('Failed to generate meeting link', e);
       }

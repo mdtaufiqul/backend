@@ -1,11 +1,12 @@
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef, HttpException, HttpStatus } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TwilioService } from '../services/twilio.service';
 import { WhatsAppTierService } from '../services/whatsapp-tier.service';
 import { DynamicMailerService } from '../services/dynamic-mailer.service';
 import { SmsSenderService } from '../services/sms-sender.service';
 import { PatientScoreService } from '../patients/patient-score.service';
+import { ConversationsService } from '../conversations/conversations.service';
 
 @Injectable()
 export class CommunicationService {
@@ -18,6 +19,8 @@ export class CommunicationService {
         private mailerService: DynamicMailerService,
         private smsSenderService: SmsSenderService,
         private patientScoreService: PatientScoreService,
+        @Inject(forwardRef(() => ConversationsService))
+        private conversationsService: ConversationsService,
     ) { }
 
     /**
@@ -76,58 +79,118 @@ export class CommunicationService {
         doctorId: string,
         patientId: string,
         type: 'SMS' | 'WHATSAPP' | 'EMAIL' | 'IN_APP',
-        content: string
+        content: string,
+        senderContext?: any
     ) {
         const patient = await this.prisma.patient.findUnique({ where: { id: patientId } });
         if (!patient) throw new Error('Patient not found');
 
+        const role = senderContext?.role?.toLowerCase();
+        const isPatient = role === 'patient';
+        
+        // Resolve target doctor if "unknown"
+        let effectiveDoctorId = doctorId;
+        if (doctorId === 'unknown' || !doctorId) {
+            const fallbackDoc = await this.prisma.user.findFirst({
+                where: { clinicId: patient.clinicId, role: 'doctor' }
+            });
+            if (!fallbackDoc) {
+                throw new HttpException('No doctor assigned to this patient and no clinic doctor found to receive message.', HttpStatus.BAD_REQUEST);
+            }
+            effectiveDoctorId = fallbackDoc.id;
+        }
+
         let status = 'SENT';
         let errorMsg = null;
-        let fromIdentity = 'System';
+        let fromIdentity = isPatient ? 'Patient' : 'Doctor';
+        let direction: 'INBOUND' | 'OUTBOUND' = isPatient ? 'INBOUND' : 'OUTBOUND';
         let tierUsed: string | null = null;
 
         try {
-            if (type === 'SMS') {
-                if (!patient.phone) throw new Error('Patient has no phone number');
-                const identity = await this.smsSenderService.getSmsIdentity(doctorId);
-                await this.twilioService.sendSms(identity.from, patient.phone, content, doctorId);
-                fromIdentity = identity.from;
-                tierUsed = identity.tier;
-            }
-            else if (type === 'WHATSAPP') {
-                if (!patient.phone) throw new Error('Patient has no phone number');
-                await this.whatsappTierService.sendWhatsApp(doctorId, patient.phone, content);
-                fromIdentity = 'WhatsApp'; // TODO: Get actual sender from tier service
-                tierUsed = 'TIER_SERVICE';
-            }
-
-            else if (type === 'EMAIL') {
-                if (!patient.email) throw new Error('Patient has no email');
-                await this.mailerService.sendMail(doctorId, {
-                    to: patient.email,
-                    subject: 'Message from your Doctor', // Could be dynamic
-                    html: `<p>${content}</p>` // Simple text for manual chat
-                });
-                fromIdentity = 'Email';
-            }
-            else if (type === 'IN_APP') {
-                // Internal message only - no external provider
-                // Just saving to DB is enough (handled in finally block)
-                fromIdentity = 'Doctor';
-                status = 'SENT';
+            if (isPatient) {
+                // Patient -> Doctor direction
+                if (type === 'EMAIL') {
+                    const doctor = await this.prisma.user.findUnique({ where: { id: effectiveDoctorId } });
+                    if (!doctor || !doctor.email) throw new Error('Doctor email not available');
+                    
+                    await this.mailerService.sendMail(undefined, { 
+                        to: doctor.email,
+                        subject: `New Message from Patient: ${patient.name}`,
+                        html: `
+                            <div style="font-family: sans-serif;">
+                                <p>You have received a new email message via the patient portal:</p>
+                                <blockquote style="border-left: 4px solid #eee; padding-left: 10px; margin: 20px 0;">
+                                    ${content}
+                                </blockquote>
+                                <p><strong>From:</strong> ${patient.name} (${patient.email || 'No email'})</p>
+                            </div>
+                        `
+                    });
+                    fromIdentity = patient.email || 'Patient Email';
+                    status = 'RECEIVED';
+                } else if (type === 'IN_APP') {
+                    // Resolve conversation
+                    const conversation = await this.conversationsService.getOrCreateConversation(effectiveDoctorId, patientId);
+                    await this.conversationsService.sendMessage(
+                        conversation.id,
+                        content,
+                        senderContext?.userId || patientId,
+                        'patient',
+                        patient.clinicId || undefined,
+                        patientId
+                    );
+                    status = 'RECEIVED';
+                } else {
+                    throw new Error(`Patients cannot send ${type} directly. Use Internal Chat.`);
+                }
+            } else {
+                // Doctor -> Patient direction
+                if (type === 'SMS') {
+                    if (!patient.phone) throw new Error('Patient has no phone number');
+                    const identity = await this.smsSenderService.getSmsIdentity(effectiveDoctorId);
+                    await this.twilioService.sendSms(identity.from, patient.phone, content, effectiveDoctorId);
+                    fromIdentity = identity.from;
+                    tierUsed = identity.tier;
+                }
+                else if (type === 'WHATSAPP') {
+                    if (!patient.phone) throw new Error('Patient has no phone number');
+                    await this.whatsappTierService.sendWhatsApp(effectiveDoctorId, patient.phone, content);
+                    fromIdentity = 'WhatsApp';
+                    tierUsed = 'TIER_SERVICE';
+                }
+                else if (type === 'EMAIL') {
+                    if (!patient.email) throw new Error('Patient has no email');
+                    await this.mailerService.sendMail(effectiveDoctorId, {
+                        to: patient.email,
+                        subject: 'Message from your Doctor',
+                        html: `<p>${content}</p>`
+                    });
+                    fromIdentity = 'Email';
+                }
+                else if (type === 'IN_APP') {
+                    const conversation = await this.conversationsService.getOrCreateConversation(effectiveDoctorId, patientId);
+                    await this.conversationsService.sendMessage(
+                        conversation.id,
+                        content,
+                        effectiveDoctorId,
+                        role,
+                        patient.clinicId || undefined
+                    );
+                    status = 'SENT';
+                }
             }
         } catch (e) {
             this.logger.error(`Failed to send manual ${type}: ${e.message}`);
             status = 'FAILED';
             errorMsg = e.message;
-            throw e; // Rethrow so controller knows it failed
+            throw e;
         } finally {
             // Log the attempt
             await this.prisma.communicationLog.create({
                 data: {
                     patientId,
                     type,
-                    direction: 'OUTBOUND',
+                    direction,
                     status,
                     content: errorMsg ? `Failed: ${errorMsg}` : content,
                     fromIdentity,
@@ -135,6 +198,10 @@ export class CommunicationService {
                     providerId: 'manual',
                 }
             });
+            
+            if (isPatient && status === 'RECEIVED') {
+                 await this.patientScoreService.handlePatientReply(patientId);
+            }
         }
     }
 }

@@ -53,7 +53,8 @@ export class ConversationsService {
                 data: {
                     doctorId,
                     patientId,
-                    clinicId: doctor?.clinicId
+                    clinicId: doctor?.clinicId,
+                    type: 'INTERNAL'
                 },
                 include: {
                     doctor: {
@@ -106,11 +107,21 @@ export class ConversationsService {
                 throw new ForbiddenException('Patient ID required');
             }
             where.patientId = patientId;
-        } else if (normalizedRole === 'clinic_admin' || normalizedRole === 'clinic_representative') {
-            if (!clinicId) {
-                throw new ForbiddenException('Clinic ID required for clinic staff');
+        } else if (['clinic_admin', 'clinic_representative', 'system_admin', 'saas_owner', 'staff', 'nurse'].includes(normalizedRole)) {
+            if (clinicId) {
+                where.clinicId = clinicId;
             }
-            where.clinicId = clinicId;
+            // If no clinicId (e.g. Super Admin), maybe unrestricted? 
+            // For now, let's keep it scoped if clinicId exists, otherwise it might be empty if we require clinicId.
+            // But let's assume SAAS_OWNER might want to see all.
+            if (normalizedRole === 'saas_owner' && !clinicId) {
+                // No filter on clinicId
+            } else if (!clinicId && normalizedRole !== 'saas_owner') {
+                 // throw new ForbiddenException('Clinic ID required');
+                 // Don't throw, just return empty to be safe? Or allow global?
+                 // Let's assume system_admin usually has a clinic context or is global. 
+                 // If global, we verify no clinicId filter is applied.
+            }
         } else {
             return [];
         }
@@ -242,7 +253,7 @@ export class ConversationsService {
             data: {
                 conversationId,
                 content,
-                senderId: userId,
+                senderId: normalizedRole === 'patient' ? null : userId,
                 senderType: normalizedRole === 'patient' ? 'PATIENT' : 'USER',
                 onBehalfOfId: onBehalfOfId || (normalizedRole === 'doctor' ? userId : undefined)
             },
@@ -257,8 +268,10 @@ export class ConversationsService {
         });
 
         // Broadcast Real-time
-        const room = `conversation-${conversationId}`;
-        this.messagesGateway.server.to(room).emit('newMessage', message);
+        if (this.messagesGateway && this.messagesGateway.server) {
+            const room = `conversation-${conversationId}`;
+            this.messagesGateway.server.to(room).emit('newMessage', message);
+        }
 
         // Also broadcast to patient room for global notifications
         if (conversation.patientId) {

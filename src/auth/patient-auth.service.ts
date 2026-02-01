@@ -24,13 +24,22 @@ export class PatientAuthService {
     }
 
     async login(patient: any) {
-        const payload = { email: patient.email, sub: patient.id, role: 'patient' };
+        // Include userId in payload for compatibility with JwtAuthGuard
+        const payload = { 
+            email: patient.email, 
+            sub: patient.id, 
+            userId: patient.id, 
+            role: 'patient',
+            profileType: 'PATIENT'
+        };
         return {
             access_token: this.jwtService.sign(payload),
             patient: {
                 id: patient.id,
                 name: patient.name,
-                email: patient.email
+                email: patient.email,
+                doctorId: patient.assignedDoctorId,
+                clinicId: patient.clinicId
             }
         };
     }
