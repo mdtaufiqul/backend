@@ -33,13 +33,19 @@ export class ConversationsController {
         // Get patient ID if user is a patient
         let patientId: string | undefined;
         if (role === 'patient') {
-            const patient = await this.prisma.patient.findFirst({
-                where: { email: { equals: req.user.email, mode: 'insensitive' } },
-            });
-            if (!patient) {
+            // Optimized: If profileType matches, trusted userId is the patientId
+            if (req.user.profileType === 'PATIENT') {
+                patientId = userId;
+            } else {
+                const patient = await this.prisma.patient.findFirst({
+                    where: { email: { equals: req.user.email, mode: 'insensitive' } },
+                });
+                patientId = patient?.id;
+            }
+            
+            if (!patientId) {
                 throw new ForbiddenException('Patient profile not found');
             }
-            patientId = patient.id;
         }
 
         return this.conversationsService.findAll(userId, role, clinicId, patientId, type);
@@ -52,11 +58,15 @@ export class ConversationsController {
     async create(@Request() req, @Body() body: { patientId: string }) {
         const userId = req.user.userId;
         const role = req.user.role;
+        const normalizedRole = role?.toUpperCase();
 
-        if (role !== 'doctor') {
-            throw new ForbiddenException('Only doctors can initiate conversations via this endpoint');
+        // Allow Doctors and Admins/Staff to initiate conversations
+        const allowedRoles = ['DOCTOR', 'SYSTEM_ADMIN', 'CLINIC_ADMIN', 'STAFF', 'NURSE'];
+        if (!allowedRoles.includes(normalizedRole)) {
+            throw new ForbiddenException('You are not authorized to initiate conversations');
         }
 
+        // Ideally pass role/clinicId to service to ensure data isolation context is maintained
         return this.conversationsService.getOrCreateConversation(userId, body.patientId);
     }
 
@@ -72,13 +82,18 @@ export class ConversationsController {
         // Get patient ID if user is a patient
         let patientId: string | undefined;
         if (role === 'patient') {
-            const patient = await this.prisma.patient.findFirst({
-                where: { email: { equals: req.user.email, mode: 'insensitive' } },
-            });
-            if (!patient) {
+            if (req.user.profileType === 'PATIENT') {
+                patientId = userId;
+            } else {
+                const patient = await this.prisma.patient.findFirst({
+                    where: { email: { equals: req.user.email, mode: 'insensitive' } },
+                });
+                patientId = patient?.id;
+            }
+            
+            if (!patientId) {
                 throw new ForbiddenException('Patient profile not found');
             }
-            patientId = patient.id;
         }
 
         return this.conversationsService.findOne(id, userId, role, clinicId, patientId);
@@ -96,13 +111,18 @@ export class ConversationsController {
         // Get patient ID if user is a patient
         let patientId: string | undefined;
         if (role === 'patient') {
-            const patient = await this.prisma.patient.findFirst({
-                where: { email: { equals: req.user.email, mode: 'insensitive' } },
-            });
-            if (!patient) {
+            if (req.user.profileType === 'PATIENT') {
+                patientId = userId;
+            } else {
+                const patient = await this.prisma.patient.findFirst({
+                    where: { email: { equals: req.user.email, mode: 'insensitive' } },
+                });
+                patientId = patient?.id;
+            }
+            
+            if (!patientId) {
                 throw new ForbiddenException('Patient profile not found');
             }
-            patientId = patient.id;
         }
 
         return this.conversationsService.getMessages(id, userId, role, clinicId, patientId);
@@ -124,13 +144,18 @@ export class ConversationsController {
         // Get patient ID if user is a patient
         let patientId: string | undefined;
         if (role === 'patient') {
-            const patient = await this.prisma.patient.findFirst({
-                where: { email: { equals: req.user.email, mode: 'insensitive' } },
-            });
-            if (!patient) {
+            if (req.user.profileType === 'PATIENT') {
+                patientId = userId;
+            } else {
+                const patient = await this.prisma.patient.findFirst({
+                    where: { email: { equals: req.user.email, mode: 'insensitive' } },
+                });
+                patientId = patient?.id;
+            }
+            
+            if (!patientId) {
                 throw new ForbiddenException('Patient profile not found');
             }
-            patientId = patient.id;
         }
 
         return this.conversationsService.sendMessage(

@@ -289,16 +289,76 @@ export class AuthService {
     async loginLegacy(data: any) {
         // ... (Original logic for non-migrated users)
         const { email, password, role } = data;
-        const user = await this.prisma.user.findFirst({
-            where: { email: { equals: email, mode: 'insensitive' } }
-        });
 
-        if (!user) {
-            throw new UnauthorizedException('No account found');
+        let user;
+        
+        // 1. Try to find precise match by Role if provided
+        if (role) {
+            const normalizedRole = role.toLowerCase();
+            user = await this.prisma.user.findFirst({
+                where: { 
+                    email: { equals: email, mode: 'insensitive' },
+                    role: normalizedRole
+                }
+            });
         }
 
-        const isValid = await bcrypt.compare(password, user.passwordHash || '');
+        // 2. Fallback to just email if no role specified or no match found (flexible)
+        if (!user) {
+            user = await this.prisma.user.findFirst({
+                where: { email: { equals: email, mode: 'insensitive' } }
+            });
+        }
+        
+        // Check if User credentials are valid
+        let isUserValid = false;
+        if (user && user.passwordHash) {
+            isUserValid = await bcrypt.compare(password, user.passwordHash);
+        }
 
+        // If User authentication failed (no user, no password, or wrong password), try Patient
+        if (!isUserValid && (!role || role.toUpperCase() === 'PATIENT')) {
+             const patient = await this.prisma.patient.findFirst({
+                where: { 
+                    email: { equals: email, mode: 'insensitive' },
+                    passwordHash: { not: null } 
+                }
+            });
+            
+            if (patient) {
+                const isPatientValid = await bcrypt.compare(password, patient.passwordHash!);
+                if (isPatientValid) {
+                     // Override user object with Patient context
+                     user = {
+                        id: patient.id,
+                        name: patient.name,
+                        email: patient.email!,
+                        passwordHash: patient.passwordHash,
+                        role: 'patient',
+                        clinicId: patient.clinicId,
+                        status: 'ACTIVE',
+                        image: null,
+                        permissions: {},
+                        timezone: 'UTC',
+                        profileType: 'PATIENT'
+                    };
+                    // Skip further password check since we just validated it
+                    // We need to jump to token generation. 
+                    // To do this cleanly without refactoring the whole function, we can set isValid flag handled below?
+                    // But below checks `user.passwordHash` again.
+                    // Let's rely on the fact that we set `user` with the valid hash.
+                    isUserValid = true; 
+                }
+            }
+        }
+
+        if (!user) {
+             throw new UnauthorizedException('No account found');
+        }
+
+        // Final check (if we didn't just validate it above, or if we fell through)
+        // We re-check to be safe or just trust our flow.
+        const isValid = await bcrypt.compare(password, user.passwordHash || '');
         if (!isValid) throw new UnauthorizedException('Invalid credentials');
 
         // Check if user status is PENDING (awaiting email verification)
@@ -729,22 +789,34 @@ export class AuthService {
     }
     async resetPassword(token: string, newPassword: string) {
         const secret = process.env.JWT_SECRET || 'supersecret';
+        let decoded: any;
         try {
-            const decoded: any = jwt.verify(token, secret);
-            if (decoded.purpose !== 'password_reset') {
-                throw new UnauthorizedException('Invalid token purpose');
-            }
+            decoded = jwt.verify(token, secret);
+        } catch (error) {
+            throw new UnauthorizedException('Invalid or expired token');
+        }
 
-            const passwordHash = await bcrypt.hash(newPassword, 10);
+        const passwordHash = await bcrypt.hash(newPassword, 10);
+
+        // Handle Patient Invite / Set Password
+        if (decoded.type === 'patient_invite') {
+            await this.prisma.patient.update({
+                where: { id: decoded.id },
+                data: { passwordHash }
+            });
+            return { message: 'Password set successfully' };
+        }
+
+        // Handle User Password Reset
+        if (decoded.purpose === 'password_reset') {
             await this.prisma.user.update({
                 where: { id: decoded.userId },
                 data: { passwordHash }
             });
-
             return { message: 'Password updated successfully' };
-        } catch (error) {
-            throw new UnauthorizedException('Invalid or expired token');
         }
+
+        throw new UnauthorizedException('Invalid token purpose');
     }
 
     async verifyPassword(userId: string, password: string): Promise<boolean> {

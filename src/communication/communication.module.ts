@@ -11,9 +11,11 @@ import { SmsSenderService } from '../services/sms-sender.service';
 import { WhatsAppTierService } from '../services/whatsapp-tier.service';
 import { CommunicationController } from './communication.controller';
 import { PatientsModule } from '../patients/patients.module';
+import { ConversationsModule } from '../conversations/conversations.module';
+import { forwardRef } from '@nestjs/common';
 
 @Module({
-    imports: [PrismaModule, WhatsAppModule, SmsModule, PatientsModule],
+    imports: [PrismaModule, WhatsAppModule, SmsModule, PatientsModule, forwardRef(() => ConversationsModule)],
     controllers: [CommunicationController],
     providers: [EncryptionService, DynamicMailerService, TwilioService, CommunicationService, SmsSenderService, WhatsAppTierService],
     exports: [EncryptionService, DynamicMailerService, TwilioService, CommunicationService, SmsSenderService, WhatsAppTierService],
