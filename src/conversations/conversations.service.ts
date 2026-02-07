@@ -14,14 +14,14 @@ export class ConversationsService {
     ) { }
 
     /**
-     * Get or create a conversation between a doctor and patient
+     * Get or create a conversation between participants
      */
-    async getOrCreateConversation(doctorId: string, patientId: string) {
+    async getOrCreateConversation(doctorId: string, patientId?: string) {
         // Try to find existing conversation
         let conversation = await this.prisma.conversation.findFirst({
             where: {
                 doctorId,
-                patientId,
+                patientId: patientId || null,
             },
             include: {
                 doctor: {
@@ -52,7 +52,7 @@ export class ConversationsService {
             conversation = await this.prisma.conversation.create({
                 data: {
                     doctorId,
-                    patientId,
+                    patientId: patientId || null,
                     clinicId: doctor?.clinicId,
                     type: 'INTERNAL'
                 },
@@ -81,7 +81,7 @@ export class ConversationsService {
     /**
      * Get all conversations for a user based on their role
      */
-    async findAll(userId: string, role: string, clinicId?: string, patientId?: string, type?: 'INTERNAL' | 'VISITOR') {
+    async findAll(userId: string, role: string, clinicId?: string, patientId?: string, type?: 'INTERNAL' | 'VISITOR', patientIdQuery?: string, doctorIdQuery?: string) {
         // Normalize role to lowercase for consistent comparison
         const normalizedRole = role?.toLowerCase();
 
@@ -91,11 +91,42 @@ export class ConversationsService {
             where.type = type;
         }
 
+        // Apply filters from query params
+        if (patientIdQuery && doctorIdQuery && patientIdQuery === doctorIdQuery) {
+            // Flexible participant search: matches ID in either role
+            where.OR = [
+                { patientId: patientIdQuery },
+                { doctorId: patientIdQuery }
+            ];
+        } else {
+            if (patientIdQuery) {
+                where.patientId = patientIdQuery;
+            }
+            if (doctorIdQuery) {
+                where.doctorId = doctorIdQuery;
+            }
+        }
+
         if (normalizedRole === 'doctor') {
-            where.doctorId = userId;
+            const roleAccess = [
+                { doctorId: userId },
+                { messages: { some: { senderId: userId } } }
+            ];
+            
+            if (where.OR) {
+                const ptOR = where.OR;
+                delete where.OR;
+                where.AND = [
+                    { OR: ptOR },
+                    { OR: roleAccess }
+                ];
+            } else {
+                where.OR = roleAccess;
+            }
+
             // Doctors should see Assigned Visitor Chats
             if (type === 'VISITOR') {
-                delete where.doctorId;
+                delete where.AND;
                 where.OR = [
                     { doctorId: userId },
                     { doctorId: null } // Unassigned
@@ -104,23 +135,33 @@ export class ConversationsService {
             }
         } else if (normalizedRole === 'patient') {
             if (!patientId) {
-                throw new ForbiddenException('Patient ID required');
+                return [];
             }
             where.patientId = patientId;
         } else if (['clinic_admin', 'clinic_representative', 'system_admin', 'saas_owner', 'staff', 'nurse'].includes(normalizedRole)) {
-            if (clinicId) {
-                where.clinicId = clinicId;
-            }
-            // If no clinicId (e.g. Super Admin), maybe unrestricted? 
-            // For now, let's keep it scoped if clinicId exists, otherwise it might be empty if we require clinicId.
-            // But let's assume SAAS_OWNER might want to see all.
-            if (normalizedRole === 'saas_owner' && !clinicId) {
-                // No filter on clinicId
-            } else if (!clinicId && normalizedRole !== 'saas_owner') {
-                 // throw new ForbiddenException('Clinic ID required');
-                 // Don't throw, just return empty to be safe? Or allow global?
-                 // Let's assume system_admin usually has a clinic context or is global. 
-                 // If global, we verify no clinicId filter is applied.
+            const clinicAccess = [
+                { clinicId: clinicId },
+                { messages: { some: { senderId: userId } } }
+            ];
+
+            // If SAAS_OWNER or SYSTEM_ADMIN without clinic context, show all participation
+            if (['saas_owner', 'system_admin'].includes(normalizedRole) && !clinicId) {
+                where.messages = { some: { senderId: userId } };
+            } else {
+                if (where.OR) {
+                    const ptOR = where.OR;
+                    delete where.OR;
+                    where.AND = [
+                        { OR: ptOR },
+                        { OR: clinicAccess }
+                    ];
+                } else {
+                    if (clinicId) {
+                        where.OR = clinicAccess;
+                    } else {
+                        where.messages = { some: { senderId: userId } };
+                    }
+                }
             }
         } else {
             return [];
@@ -195,16 +236,17 @@ export class ConversationsService {
         }
 
         // Validate access
-        if (normalizedRole === 'doctor' && conversation.doctorId !== userId) {
-            throw new ForbiddenException('Access denied');
-        }
+        const isParticipant = conversation.doctorId === userId || conversation.patientId === patientId;
+        const hasSentMessage = await this.prisma.message.findFirst({
+            where: { conversationId, senderId: userId }
+        });
 
-        if (normalizedRole === 'patient' && conversation.patientId !== patientId) {
-            throw new ForbiddenException('Access denied');
-        }
-
-        if ((normalizedRole === 'clinic_admin' || normalizedRole === 'clinic_representative') && conversation.clinicId !== clinicId) {
-            throw new ForbiddenException('Access denied - Clinic mismatch');
+        if (!isParticipant && !hasSentMessage) {
+            if (['clinic_admin', 'clinic_representative', 'system_admin', 'staff', 'nurse'].includes(normalizedRole) && conversation.clinicId === clinicId) {
+                // Admins/Staff can access conversations in their clinic
+            } else {
+                throw new ForbiddenException('Access denied');
+            }
         }
 
         return conversation;
