@@ -25,7 +25,12 @@ export class ConversationsController {
      * Get all conversations for the current user
      */
     @Get()
-    async findAll(@Request() req, @Query('type') type?: 'INTERNAL' | 'VISITOR') {
+    async findAll(
+        @Request() req, 
+        @Query('type') type?: 'INTERNAL' | 'VISITOR',
+        @Query('patientId') patientIdQuery?: string,
+        @Query('doctorId') doctorIdQuery?: string
+    ) {
         const userId = req.user.userId;
         const role = req.user.role;
         const clinicId = req.user.clinicId;
@@ -33,7 +38,6 @@ export class ConversationsController {
         // Get patient ID if user is a patient
         let patientId: string | undefined;
         if (role === 'patient') {
-            // Optimized: If profileType matches, trusted userId is the patientId
             if (req.user.profileType === 'PATIENT') {
                 patientId = userId;
             } else {
@@ -44,30 +48,62 @@ export class ConversationsController {
             }
             
             if (!patientId) {
-                throw new ForbiddenException('Patient profile not found');
+                return []; // No profile, no conversations
             }
         }
 
-        return this.conversationsService.findAll(userId, role, clinicId, patientId, type);
+        return this.conversationsService.findAll(userId, role, clinicId, patientId, type, patientIdQuery, doctorIdQuery);
     }
 
     /**
      * Create or retrieve a conversation
      */
     @Post()
-    async create(@Request() req, @Body() body: { patientId: string }) {
+    async create(@Request() req, @Body() body: { patientId?: string, doctorId?: string }) {
         const userId = req.user.userId;
         const role = req.user.role;
         const normalizedRole = role?.toUpperCase();
 
-        // Allow Doctors and Admins/Staff to initiate conversations
-        const allowedRoles = ['DOCTOR', 'SYSTEM_ADMIN', 'CLINIC_ADMIN', 'STAFF', 'NURSE'];
+        // Allow Patients, Doctors and Admins/Staff to initiate conversations
+        // (Patients can initiate with doctors)
+        const allowedRoles = ['PATIENT', 'DOCTOR', 'SYSTEM_ADMIN', 'CLINIC_ADMIN', 'STAFF', 'NURSE'];
         if (!allowedRoles.includes(normalizedRole)) {
             throw new ForbiddenException('You are not authorized to initiate conversations');
         }
 
-        // Ideally pass role/clinicId to service to ensure data isolation context is maintained
-        return this.conversationsService.getOrCreateConversation(userId, body.patientId);
+        // If patient is initiating, resolve their patient profile
+        if (role === 'patient') {
+            let patientId: string | undefined;
+            if (req.user.profileType === 'PATIENT') {
+                patientId = userId;
+            } else {
+                const patient = await this.prisma.patient.findFirst({
+                    where: { email: { equals: req.user.email, mode: 'insensitive' } },
+                });
+                patientId = patient?.id;
+            }
+
+            if (!patientId) {
+                throw new ForbiddenException('Patient profile not found');
+            }
+
+            const targetDoctorId = body.doctorId || (body as any).patientId;
+            if (!targetDoctorId) {
+                throw new ForbiddenException('Doctor ID is required for patients to start a conversation');
+            }
+
+            return this.conversationsService.getOrCreateConversation(targetDoctorId, patientId);
+        }
+
+        // If staff/doctor is initiating
+        if (body.patientId) {
+            return this.conversationsService.getOrCreateConversation(userId, body.patientId);
+        } else if (body.doctorId) {
+            // Staff to Staff chat - currently schema limited to showing for one side
+            return this.conversationsService.getOrCreateConversation(body.doctorId, undefined);
+        }
+
+        throw new ForbiddenException('Participant ID (patient or doctor) required');
     }
 
     /**

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { WorkflowOrchestrator } from './workflow.orchestrator';
 import { WorkflowProcessor } from './workflow.processor';
@@ -16,7 +16,7 @@ import { WorkflowsController } from './workflows.controller';
         BullModule.registerQueue({
             name: 'workflow-queue',
         }),
-        CommunicationModule,
+        forwardRef(() => CommunicationModule),
         EmailTemplatesModule,
         ServicesModule, // Provides SmsSenderService and WhatsAppTierService
     ],
